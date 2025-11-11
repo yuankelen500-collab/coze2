@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>步测智能体</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; }
+        button { font-size: 16px; padding: 10px 15px; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Coze Chat SDK 集成</h1>
+    <p id="status-text">正在初始化...</p>
+    <button id="open-chat-btn" style="display: none;">打开智能助手</button>
+
+    <script src="https://lf-cdn.coze.cn/obj/unpkg/flow-platform/chat-app-sdk/1.2.0-beta.19/libs/cn/index.js"></script>
+    
+    <script>
+        let cozeClient;
+        let currentUserId;
+
+        function getOrCreateUserId() {
+            let userId = localStorage.getItem('coze_visitor_user_id_final');
+            if (!userId) {
+                userId = 'visitor_' + crypto.randomUUID();
+                localStorage.setItem('coze_visitor_user_id_final', userId);
+            }
+            currentUserId = userId;
+            return userId;
+        }
+
+        async function getCozeAccessToken(userId) {
+            try {
+                document.getElementById('status-text').innerText = '正在从后端获取 Token...';
+                
+                // 【重要修改】URL 必须指向 /api/ 目录下的函数
+                const response = await fetch('/api/get-coze-token', { 
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId }),
+                });
+                
+                if (!response.ok) throw new Error(`服务器响应错误: ${response.status} ${response.statusText}`);
+                const data = await response.json();
+                if (data.error) throw new Error(`后端返回错误: ${data.error}`);
+
+                document.getElementById('status-text').innerText = 'Token 获取成功！';
+                return data.token;
+
+            } catch (error) {
+                console.error('获取 Coze Token 失败:', error);
+                document.getElementById('status-text').innerText = `获取 Token 失败: ${error.message}`;
+                return null;
+            }
+        }
+
+        (async function initializeApp() {
+            const userId = getOrCreateUserId();
+            const accessToken = await getCozeAccessToken(userId);
+
+            if (accessToken) {
+                document.getElementById('status-text').innerText = '正在初始化 Coze SDK...';
+
+                cozeClient = new CozeWebSDK.WebChatClient({
+                    config: { type: 'bot', bot_id: '7560176767618269236' },
+                    auth: {
+                        type: 'token',
+                        token: accessToken,
+                        onRefreshToken: async () => await getCozeAccessToken(currentUserId)
+                    },
+                    userInfo: {
+                        id: userId,
+                        nickname: '访客',
+                        url: 'https://lf-coze-web-cdn.coze.cn/obj/eden-cn/lm-lgvj/ljhwZthlaukjlkulzlp/coze/coze-logo.png' 
+                    },
+                    ui: {
+                        base: { layout: 'mobile', lang: 'zh-CN' },
+                        asstBtn: { isNeed: false }
+                    }
+                });
+
+                const chatButton = document.getElementById('open-chat-btn');
+                chatButton.style.display = 'block';
+                chatButton.onclick = () => cozeClient.showChatBot();
+                
+                document.getElementById('status-text').innerText = '初始化完成，请点击按钮打开助手。';
+            }
+        })();
+    </script>
+</body>
+</html>
